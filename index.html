@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Data Kependudukan Warga</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse for CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .spin-anim { animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-500 text-white p-2.5 rounded-xl shadow-md shrink-0">
+                    <i class="fa-solid fa-id-card text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight leading-none text-white">Sistem Data Kependudukan</h1>
+                        <span id="syncBadge" class="bg-emerald-500/20 text-emerald-400 text-[10px] font-medium px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                            <i class="fa-solid fa-cloud-arrow-down text-[9px]"></i> Spreadsheet Connected
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">Integrasi Google Sheets & GitHub Pages (`warga.csv`)</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <button onclick="syncSpreadsheetData()" id="btnSync" class="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center shadow-sm" title="Sinkronkan dengan Spreadsheet / GitHub warga.csv">
+                    <i class="fa-solid fa-rotate mr-1.5 text-sky-400" id="iconSync"></i> Sync Data
+                </button>
+                <button onclick="openConfigModal()" class="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center" title="Pengaturan URL Google Sheets">
+                    <i class="fa-solid fa-gear mr-1.5 text-amber-400"></i> Sumber Data
+                </button>
+                <button onclick="openModalTambah()" class="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center shadow-sm">
+                    <i class="fa-solid fa-user-plus mr-1.5"></i> (B) Tambah
+                </button>
+                <button onclick="exportCSV()" class="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center">
+                    <i class="fa-solid fa-file-csv mr-1.5 text-emerald-400"></i> Export CSV
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex-grow w-full">
+
+        <!-- Metrics Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Total Warga</p>
+                    <h3 class="text-xl sm:text-2xl font-extrabold text-slate-800 mt-0.5 sm:mt-1" id="stat-total">0</h3>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1"><i class="fa-solid fa-users text-brand-500 mr-1"></i> Terdaftar</p>
+                </div>
+                <div class="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Warga Aktif (0)</p>
+                    <h3 class="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-0.5 sm:mt-1" id="stat-aktif">0</h3>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1"><i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i> Status 0 & B</p>
+                </div>
+                <div class="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-user-check"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Pindah (5,6)</p>
+                    <h3 class="text-xl sm:text-2xl font-extrabold text-amber-600 mt-0.5 sm:mt-1" id="stat-pindah">0</h3>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1"><i class="fa-solid fa-person-walking-luggage text-amber-500 mr-1"></i> Mutasi Domisili</p>
+                </div>
+                <div class="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-house-chimney-window"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Meninggal (1)</p>
+                    <h3 class="text-xl sm:text-2xl font-extrabold text-rose-600 mt-0.5 sm:mt-1" id="stat-meninggal">0</h3>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1"><i class="fa-solid fa-ribbon text-rose-500 mr-1"></i> Wafat</p>
+                </div>
+                <div class="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                    <i class="fa-solid fa-book-skull"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visual Charts Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 md:col-span-1">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fa-solid fa-chart-pie mr-2 text-brand-500"></i> Distribusi Status Warga
+                    </h2>
+                </div>
+                <div class="h-48 relative flex justify-center items-center">
+                    <canvas id="chartStatus"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 md:col-span-2">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fa-solid fa-chart-column mr-2 text-brand-500"></i> Sebaran Warga per RT
+                    </h2>
+                </div>
+                <div class="h-48 relative">
+                    <canvas id="chartRT"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search & Filter Controls Toolbar -->
+        <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 mb-4 sm:mb-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                <!-- Search Input -->
+                <div class="lg:col-span-2 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="searchInput" onkeyup="filterData()" placeholder="Cari Nama, NIK, NKK, atau DP-ID..." class="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+                </div>
+
+                <!-- Filter RT -->
+                <div>
+                    <select id="filterRT" onchange="filterData()" class="w-full py-2 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition text-slate-700">
+                        <option value="">Semua RT</option>
+                        <option value="RT 01">RT 01</option>
+                        <option value="RT 02">RT 02</option>
+                        <option value="RT 03">RT 03</option>
+                        <option value="RT 04">RT 04</option>
+                        <option value="RT 05">RT 05</option>
+                    </select>
+                </div>
+
+                <!-- Filter Status (0-8, B, U) -->
+                <div>
+                    <select id="filterStatus" onchange="filterData()" class="w-full py-2 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition text-slate-700">
+                        <option value="">Semua Status Aksi</option>
+                        <option value="0">0 - Aktif</option>
+                        <option value="1">1 - Meninggal</option>
+                        <option value="2">2 - Ganda</option>
+                        <option value="3">3 - TNI</option>
+                        <option value="4">4 - Polisi</option>
+                        <option value="5">5 - Pindah (Luar Desa)</option>
+                        <option value="6">6 - Pindah (Dalam Desa)</option>
+                        <option value="7">7 - Pisah KK</option>
+                        <option value="8">8 - Bukan Warga</option>
+                        <option value="B">B - Baru</option>
+                        <option value="U">U - Ubah</option>
+                    </select>
+                </div>
+
+                <!-- Reset Filter -->
+                <div>
+                    <button onclick="resetFilters()" class="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 font-medium text-xs sm:text-sm rounded-lg transition flex items-center justify-center">
+                        <i class="fa-solid fa-rotate-left mr-2"></i> Reset Filter
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Quick Legend / Status Explanation -->
+            <div class="mt-3.5 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 sm:gap-2 text-[11px] sm:text-xs">
+                <span class="font-semibold text-slate-500 self-center mr-1 text-[11px]">Kode Status Aksi:</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">0=Aktif</span>
+                <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 border border-slate-300">1=Meninggal</span>
+                <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">2=Ganda</span>
+                <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">3=TNI</span>
+                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">4=Polisi</span>
+                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">5=Pindah (Luar)</span>
+                <span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200">6=Pindah (Dalam)</span>
+                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">7=Pisah KK</span>
+                <span class="px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">8=Bukan Warga</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-600 text-white">B=Baru</span>
+                <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">U=Ubah</span>
+            </div>
+        </div>
+
+        <!-- Data Table Container -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto touch-pan-x">
+                <table class="w-full text-left text-xs whitespace-nowrap">
+                    <thead class="bg-slate-800 text-slate-200 uppercase tracking-wider font-semibold border-b border-slate-700">
+                        <tr>
+                            <th scope="col" class="py-3.5 px-3 text-center w-12">NO</th>
+                            <th scope="col" class="py-3.5 px-3">DP-ID</th>
+                            <th scope="col" class="py-3.5 px-3">NKK</th>
+                            <th scope="col" class="py-3.5 px-3">NIK</th>
+                            <th scope="col" class="py-3.5 px-4">NAMA</th>
+                            <th scope="col" class="py-3.5 px-3">TEMPAT LAHIR</th>
+                            <th scope="col" class="py-3.5 px-3">TGL LAHIR</th>
+                            <th scope="col" class="py-3.5 px-3 text-center">USIA</th>
+                            <th scope="col" class="py-3.5 px-3 text-center">STS KAWIN</th>
+                            <th scope="col" class="py-3.5 px-3 text-center">JENIS KELAMIN</th>
+                            <th scope="col" class="py-3.5 px-3 text-center">RT</th>
+                            <th scope="col" class="py-3.5 px-3 text-center">KTP</th>
+                            <th scope="col" class="py-3.5 px-4 text-center sticky right-0 bg-slate-800 shadow-l">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wargaTableBody" class="divide-y divide-slate-100">
+                        <!-- Dynamic rows inserted via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table Footer / Empty State -->
+            <div id="emptyState" class="hidden p-8 text-center text-slate-400">
+                <i class="fa-solid fa-folder-open text-4xl mb-3 text-slate-300"></i>
+                <p class="text-sm font-medium">Tidak ada data warga yang sesuai dengan kriteria filter.</p>
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap justify-between items-center text-xs text-slate-500 gap-2">
+                <div>
+                    Menampilkan <span id="displayedCount" class="font-bold text-slate-700">0</span> dari <span id="totalCount" class="font-bold text-slate-700">0</span> Total Data Warga
+                </div>
+                <div class="text-[11px] text-slate-400 italic" id="lastSyncInfo">
+                    Status: Siap
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Input / Edit Warga -->
+    <div id="modalWarga" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden my-4 sm:my-8 transform transition-all max-h-[90vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="bg-slate-900 px-5 sm:px-6 py-3.5 sm:py-4 flex justify-between items-center border-b border-slate-800 shrink-0">
+                <h3 class="text-sm sm:text-base font-bold text-white flex items-center" id="modalTitle">
+                    <i class="fa-solid fa-user-pen mr-2 text-brand-400"></i> Form Data Warga
+                </h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form -->
+            <form id="formWarga" onsubmit="saveWarga(event)" class="p-4 sm:p-6 space-y-3.5 sm:space-y-4 text-xs overflow-y-auto flex-grow">
+                <input type="hidden" id="editIndex" value="-1">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- DP-ID -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">DP-ID <span class="text-rose-500">*</span></label>
+                        <input type="text" id="inputDpId" required placeholder="Contoh: DP-351501" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+
+                    <!-- RT -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">RT <span class="text-rose-500">*</span></label>
+                        <select id="inputRt" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                            <option value="RT 01">RT 01</option>
+                            <option value="RT 02">RT 02</option>
+                            <option value="RT 03">RT 03</option>
+                            <option value="RT 04">RT 04</option>
+                            <option value="RT 05">RT 05</option>
+                        </select>
+                    </div>
+
+                    <!-- NKK -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">NKK (Nomor KK) <span class="text-rose-500">*</span></label>
+                        <input type="text" id="inputNkk" maxlength="16" required placeholder="16 Digit NKK" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none font-mono">
+                    </div>
+
+                    <!-- NIK -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">NIK (Nomor Induk Kependudukan) <span class="text-rose-500">*</span></label>
+                        <input type="text" id="inputNik" maxlength="16" required placeholder="16 Digit NIK" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none font-mono">
+                    </div>
+
+                    <!-- NAMA -->
+                    <div class="sm:col-span-2">
+                        <label class="block font-semibold text-slate-700 mb-1">NAMA LENGKAP <span class="text-rose-500">*</span></label>
+                        <input type="text" id="inputNama" required placeholder="Nama Lengkap Sesuai KTP" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none uppercase">
+                    </div>
+
+                    <!-- TEMPAT LAHIR -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">TEMPAT LAHIR <span class="text-rose-500">*</span></label>
+                        <input type="text" id="inputTempatLahir" required placeholder="Kota / Kabupaten" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+
+                    <!-- TANGGAL LAHIR -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">TANGGAL LAHIR <span class="text-rose-500">*</span></label>
+                        <input type="date" id="inputTanggalLahir" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+
+                    <!-- JENIS KELAMIN -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">JENIS KELAMIN <span class="text-rose-500">*</span></label>
+                        <select id="inputJenisKelamin" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                            <option value="L">LAKI-LAKI (L)</option>
+                            <option value="P">PEREMPUAN (P)</option>
+                        </select>
+                    </div>
+
+                    <!-- STS KAWIN -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">STS KAWIN (Status Perkawinan) <span class="text-rose-500">*</span></label>
+                        <select id="inputStsKawin" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                            <option value="BELUM KAWIN">BELUM KAWIN</option>
+                            <option value="KAWIN">KAWIN</option>
+                            <option value="CERAI HIDUP">CERAI HIDUP</option>
+                            <option value="CERAI MATI">CERAI MATI</option>
+                        </select>
+                    </div>
+
+                    <!-- KTP Status -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">KEPEMILIKAN KTP <span class="text-rose-500">*</span></label>
+                        <select id="inputKtp" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                            <option value="Ada">Ada / e-KTP Fix</option>
+                            <option value="Belum Ada">Belum / Belum Rekam</option>
+                            <option value="Proses">Dalam Proses</option>
+                        </select>
+                    </div>
+
+                    <!-- AKSI / STATUS WARGA (0 - 8, U, B) -->
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">STATUS AKSI KEPENDUDUKAN <span class="text-rose-500">*</span></label>
+                        <select id="inputAksi" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none font-medium">
+                            <option value="0">0 = Aktif</option>
+                            <option value="1">1 = Meninggal</option>
+                            <option value="2">2 = Ganda</option>
+                            <option value="3">3 = TNI</option>
+                            <option value="4">4 = Polisi</option>
+                            <option value="5">5 = Pindah Domisili (Luar Desa)</option>
+                            <option value="6">6 = Pindah Domisili (Dalam Desa)</option>
+                            <option value="7">7 = Pisah KK</option>
+                            <option value="8">8 = Bukan Warga</option>
+                            <option value="B">B = Baru</option>
+                            <option value="U">U = Ubah</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="pt-4 border-t border-slate-200 flex justify-end space-x-2">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-medium transition">
+                        Batal
+                    </button>
+                    <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-semibold transition flex items-center shadow-sm">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Data
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Configuration / Sumber Data Spreadsheet -->
+    <div id="modalConfig" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden my-4 transform transition-all">
+            <div class="bg-slate-900 px-5 py-4 flex justify-between items-center border-b border-slate-800">
+                <h3 class="text-sm sm:text-base font-bold text-white flex items-center">
+                    <i class="fa-solid fa-cloud-arrow-down mr-2 text-amber-400"></i> Pengaturan Sumber Data
+                </h3>
+                <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="p-5 space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Metode Pengambilan Data:</label>
+                    <select id="configMethod" onchange="toggleConfigInputs()" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+                        <option value="github">File `warga.csv` GitHub Repository (Default)</option>
+                        <option value="gsheet">Google Sheets CSV Published Link</option>
+                    </select>
+                </div>
+
+                <div id="gsheetUrlGroup" class="hidden">
+                    <label class="block font-semibold text-slate-700 mb-1">Google Sheets CSV URL:</label>
+                    <input type="url" id="configSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-brand-500">
+                    <p class="text-[10px] text-slate-500 mt-1">
+                        *Di Google Sheets: Pilih <strong>File &gt; Share &gt; Publish to web</strong> &gt; Pilih Format <strong>CSV</strong>.
+                    </p>
+                </div>
+
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p class="font-semibold text-slate-700 mb-1"><i class="fa-solid fa-file-csv text-emerald-600 mr-1"></i> Upload Manual CSV File:</p>
+                    <input type="file" id="csvFileInput" accept=".csv" onchange="handleFileUpload(event)" class="w-full text-slate-500 text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                </div>
+
+                <div class="pt-3 border-t border-slate-200 flex justify-between items-center">
+                    <button type="button" onclick="clearLocalStorageData()" class="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg font-medium transition">
+                        Reset Cache Local
+                    </button>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="closeConfigModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-medium">Batal</button>
+                        <button type="button" onclick="saveConfig()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-semibold">Simpan & Sync</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3 border border-slate-800" id="toastContent">
+            <i class="fa-solid fa-circle-check text-emerald-400 text-lg" id="toastIcon"></i>
+            <span class="text-xs font-medium" id="toastMessage">Pesan Notifikasi</span>
+        </div>
+    </div>
+
+    <script>
+        // Master Code Map for Citizen Action Statuses
+        const STATUS_MAP = {
+            '0': { label: '0 = Aktif', bg: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: 'fa-user-check' },
+            '1': { label: '1 = Meninggal', bg: 'bg-slate-200 text-slate-800 border-slate-400', icon: 'fa-cross' },
+            '2': { label: '2 = Ganda', bg: 'bg-rose-100 text-rose-800 border-rose-300', icon: 'fa-copy' },
+            '3': { label: '3 = TNI', bg: 'bg-teal-100 text-teal-800 border-teal-300', icon: 'fa-shield-halved' },
+            '4': { label: '4 = Polisi', bg: 'bg-indigo-100 text-indigo-800 border-indigo-300', icon: 'fa-user-shield' },
+            '5': { label: '5 = Pindah (Luar Desa)', bg: 'bg-amber-100 text-amber-800 border-amber-300', icon: 'fa-plane-departure' },
+            '6': { label: '6 = Pindah (Dalam Desa)', bg: 'bg-sky-100 text-sky-800 border-sky-300', icon: 'fa-house-user' },
+            '7': { label: '7 = Pisah KK', bg: 'bg-purple-100 text-purple-800 border-purple-300', icon: 'fa-people-arrows' },
+            '8': { label: '8 = Bukan Warga', bg: 'bg-red-100 text-red-800 border-red-300', icon: 'fa-user-slash' },
+            'B': { label: 'B = Baru', bg: 'bg-emerald-600 text-white border-emerald-700', icon: 'fa-user-plus' },
+            'U': { label: 'U = Ubah', bg: 'bg-blue-100 text-blue-800 border-blue-300', icon: 'fa-pen-to-square' }
+        };
+
+        // Fallback Sample Citizen Data
+        const initialDefaultWarga = [
+            { id: 1, dpId: 'DP-351501', nkk: '3515010101200001', nik: '3515011205850001', nama: 'BUDI SANTOSO', tempatLahir: 'SURABAYA', tglLahir: '1985-05-12', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
+            { id: 2, dpId: 'DP-351502', nkk: '3515010101200001', nik: '3515015508890002', nama: 'SITI AMINAH', tempatLahir: 'SIDOARJO', tglLahir: '1989-08-15', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
+            { id: 3, dpId: 'DP-351503', nkk: '3515010202200002', nik: '3515012002780003', nama: 'BAMBANG HERMANTO', tempatLahir: 'MALANG', tglLahir: '1978-02-20', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 02', ktp: 'Ada', aksi: '3' },
+            { id: 4, dpId: 'DP-351504', nkk: '3515010303200003', nik: '3515010303920004', nama: 'RUDI HARTONO', tempatLahir: 'GRESIK', tglLahir: '1992-03-03', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 03', ktp: 'Ada', aksi: '5' },
+            { id: 5, dpId: 'DP-351505', nkk: '3515010404200004', nik: '3515014407500005', nama: 'MBOK SUMIATI', tempatLahir: 'SIDOARJO', tglLahir: '1950-07-04', stsKawin: 'CERAI MATI', jenisKelamin: 'P', rt: 'RT 02', ktp: 'Ada', aksi: '1' },
+            { id: 6, dpId: 'DP-351506', nkk: '3515010505200005', nik: '3515011111980006', nama: 'AHMAD PRATAMA', tempatLahir: 'SURABAYA', tglLahir: '1998-11-11', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 04', ktp: 'Proses', aksi: 'B' },
+            { id: 7, dpId: 'DP-351507', nkk: '3515010606200006', nik: '3515016212950007', nama: 'DEWI LESTARI', tempatLahir: 'KEDIRI', tglLahir: '1995-12-22', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 03', ktp: 'Ada', aksi: '6' },
+            { id: 8, dpId: 'DP-351508', nkk: '3515010707200007', nik: '3515011404880008', nama: 'EKO PRASETYO', tempatLahir: 'MOJOKERTO', tglLahir: '1988-04-14', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 05', ktp: 'Ada', aksi: '4' }
+        ];
+
+        let wargaData = [];
+        let chartStatusInstance = null;
+        let chartRtInstance = null;
+
+        // Configuration State
+        let configSourceMethod = localStorage.getItem('warga_config_method') || 'github'; // 'github' or 'gsheet'
+        let configGoogleSheetUrl = localStorage.getItem('warga_gsheet_url') || '';
+
+        // Calculate Age dynamically
+        function calculateAge(birthDateString) {
+            if (!birthDateString) return 0;
+            // Clean format DD/MM/YYYY to YYYY-MM-DD if needed
+            let cleanDate = birthDateString;
+            if (birthDateString.includes('/')) {
+                const parts = birthDateString.split('/');
+                if (parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            const birthDate = new Date(cleanDate);
+            if (isNaN(birthDate.getTime())) return 0;
+            
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            return age < 0 ? 0 : age;
+        }
+
+        // Format Date to ID standard (DD/MM/YYYY)
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            if (dateString.includes('/')) return dateString;
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return dateString;
+        }
+
+        // Render Table & Statistics
+        function renderTable(dataToRender) {
+            const tbody = document.getElementById('wargaTableBody');
+            const emptyState = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+
+            if (dataToRender.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            dataToRender.forEach((item, index) => {
+                const usia = calculateAge(item.tglLahir);
+                const statusInfo = STATUS_MAP[item.aksi] || { label: item.aksi, bg: 'bg-slate-100 text-slate-700', icon: 'fa-info' };
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-3 text-center font-medium text-slate-500">${index + 1}</td>
+                    <td class="py-3 px-3 font-semibold text-brand-700">${item.dpId || '-'}</td>
+                    <td class="py-3 px-3 font-mono text-slate-600">${item.nkk || '-'}</td>
+                    <td class="py-3 px-3 font-mono text-slate-700 font-medium">${item.nik || '-'}</td>
+                    <td class="py-3 px-4 font-bold text-slate-800">${item.nama || '-'}</td>
+                    <td class="py-3 px-3 text-slate-600">${item.tempatLahir || '-'}</td>
+                    <td class="py-3 px-3 text-slate-600">${formatDate(item.tglLahir)}</td>
+                    <td class="py-3 px-3 text-center font-semibold text-slate-700 bg-slate-50/50">${usia} Thn</td>
+                    <td class="py-3 px-3 text-center">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            ${item.stsKawin || 'BELUM KAWIN'}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3 text-center font-bold ${item.jenisKelamin === 'L' ? 'text-blue-600' : 'text-pink-600'}">
+                        ${item.jenisKelamin || 'L'}
+                    </td>
+                    <td class="py-3 px-3 text-center">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-200 text-slate-800">
+                            ${item.rt || 'RT 01'}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3 text-center">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-medium ${
+                            item.ktp === 'Ada' ? 'bg-emerald-100 text-emerald-800' : 
+                            item.ktp === 'Proses' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                        }">
+                            ${item.ktp || 'Ada'}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3 text-center sticky right-0 bg-white group-hover:bg-slate-50 shadow-md">
+                        <div class="flex items-center justify-center space-x-1.5">
+                            <!-- Status Badge -->
+                            <span class="px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-bold border flex items-center gap-1 shadow-xs ${statusInfo.bg}">
+                                <i class="fa-solid ${statusInfo.icon}"></i> ${item.aksi}
+                            </span>
+
+                            <!-- Edit Action Button (U) -->
+                            <button onclick="editWarga(${item.id})" title="Ubah Data (U)" class="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md transition border border-blue-200 flex items-center gap-1 font-semibold text-[10px] sm:text-xs">
+                                <i class="fa-solid fa-pen-to-square"></i> <span>Ubah</span>
+                            </button>
+
+                            <!-- Quick Change Action Direct Button -->
+                            <select onchange="quickChangeStatus(${item.id}, this.value)" class="text-[10px] sm:text-xs py-1 px-1 bg-slate-100 border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer">
+                                <option value="" disabled selected>Ganti Status</option>
+                                <option value="0">0 - Aktif</option>
+                                <option value="1">1 - Meninggal</option>
+                                <option value="2">2 - Ganda</option>
+                                <option value="3">3 - TNI</option>
+                                <option value="4">4 - Polisi</option>
+                                <option value="5">5 - Pindah Luar</option>
+                                <option value="6">6 - Pindah Dalam</option>
+                                <option value="7">7 - Pisah KK</option>
+                                <option value="8">8 - Bukan Warga</option>
+                                <option value="B">B - Baru</option>
+                                <option value="U">U - Ubah</option>
+                            </select>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('displayedCount').textContent = dataToRender.length;
+            document.getElementById('totalCount').textContent = wargaData.length;
+
+            updateMetrics();
+            updateCharts();
+        }
+
+        // Filter Data Function
+        function filterData() {
+            const searchValue = document.getElementById('searchInput').value.toLowerCase();
+            const filterRT = document.getElementById('filterRT').value;
+            const filterStatus = document.getElementById('filterStatus').value;
+
+            const filtered = wargaData.filter(item => {
+                const matchesSearch = 
+                    (item.nama && item.nama.toLowerCase().includes(searchValue)) ||
+                    (item.nik && item.nik.toLowerCase().includes(searchValue)) ||
+                    (item.nkk && item.nkk.toLowerCase().includes(searchValue)) ||
+                    (item.dpId && item.dpId.toLowerCase().includes(searchValue));
+                
+                const matchesRT = filterRT === '' || item.rt === filterRT;
+                const matchesStatus = filterStatus === '' || String(item.aksi) === filterStatus;
+
+                return matchesSearch && matchesRT && matchesStatus;
+            });
+
+            renderTable(filtered);
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterRT').value = '';
+            document.getElementById('filterStatus').value = '';
+            renderTable(wargaData);
+            showToast('Filter telah di-reset', 'info');
+        }
+
+        // Update Statistics Count Cards
+        function updateMetrics() {
+            document.getElementById('stat-total').textContent = wargaData.length;
+            document.getElementById('stat-aktif').textContent = wargaData.filter(w => String(w.aksi) === '0' || String(w.aksi) === 'B').length;
+            document.getElementById('stat-pindah').textContent = wargaData.filter(w => String(w.aksi) === '5' || String(w.aksi) === '6').length;
+            document.getElementById('stat-meninggal').textContent = wargaData.filter(w => String(w.aksi) === '1').length;
+        }
+
+        // Update Chart JS Charts
+        function updateCharts() {
+            const statusCounts = {
+                'Aktif (0, B)': wargaData.filter(w => ['0', 'B'].includes(String(w.aksi))).length,
+                'Meninggal (1)': wargaData.filter(w => String(w.aksi) === '1').length,
+                'Pindah (5,6)': wargaData.filter(w => ['5', '6'].includes(String(w.aksi))).length,
+                'Lainnya': wargaData.filter(w => !['0', '1', '5', '6', 'B'].includes(String(w.aksi))).length
+            };
+
+            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+            if (chartStatusInstance) chartStatusInstance.destroy();
+            chartStatusInstance = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(statusCounts),
+                    datasets: [{
+                        data: Object.values(statusCounts),
+                        backgroundColor: ['#10b981', '#64748b', '#f59e0b', '#6366f1'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+                    }
+                }
+            });
+
+            const rtList = ['RT 01', 'RT 02', 'RT 03', 'RT 04', 'RT 05'];
+            const rtCounts = rtList.map(rt => wargaData.filter(w => w.rt === rt).length);
+
+            const ctxRT = document.getElementById('chartRT').getContext('2d');
+            if (chartRtInstance) chartRtInstance.destroy();
+            chartRtInstance = new Chart(ctxRT, {
+                type: 'bar',
+                data: {
+                    labels: rtList,
+                    datasets: [{
+                        label: 'Jumlah Warga',
+                        data: rtCounts,
+                        backgroundColor: '#0284c7',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } },
+                        x: { ticks: { font: { size: 10 } } }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // Modal Handlers
+        function openModalTambah() {
+            document.getElementById('formWarga').reset();
+            document.getElementById('editIndex').value = '-1';
+            document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-user-plus mr-2 text-emerald-400"></i> Tambah Warga Baru (Kode B)';
+            document.getElementById('inputAksi').value = 'B';
+            document.getElementById('modalWarga').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modalWarga').classList.add('hidden');
+        }
+
+        function editWarga(id) {
+            const warga = wargaData.find(w => w.id === id);
+            if (!warga) return;
+
+            document.getElementById('editIndex').value = warga.id;
+            document.getElementById('inputDpId').value = warga.dpId || '';
+            document.getElementById('inputNkk').value = warga.nkk || '';
+            document.getElementById('inputNik').value = warga.nik || '';
+            document.getElementById('inputNama').value = warga.nama || '';
+            document.getElementById('inputTempatLahir').value = warga.tempatLahir || '';
+            document.getElementById('inputTanggalLahir').value = warga.tglLahir || '';
+            document.getElementById('inputJenisKelamin').value = warga.jenisKelamin || 'L';
+            document.getElementById('inputStsKawin').value = warga.stsKawin || 'BELUM KAWIN';
+            document.getElementById('inputRt').value = warga.rt || 'RT 01';
+            document.getElementById('inputKtp').value = warga.ktp || 'Ada';
+            document.getElementById('inputAksi').value = String(warga.aksi || '0');
+
+            document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2 text-brand-400"></i> Ubah Data Warga (Kode U)';
+            document.getElementById('modalWarga').classList.remove('hidden');
+        }
+
+        function quickChangeStatus(id, newStatus) {
+            if (!newStatus) return;
+            const index = wargaData.findIndex(w => w.id === id);
+            if (index !== -1) {
+                wargaData[index].aksi = String(newStatus);
+                saveToLocalStorage();
+                filterData();
+                showToast(`Status warga ${wargaData[index].nama} diubah ke [${newStatus}]`, 'success');
+            }
+        }
+
+        function saveWarga(event) {
+            event.preventDefault();
+            const editId = parseInt(document.getElementById('editIndex').value);
+
+            const payload = {
+                dpId: document.getElementById('inputDpId').value.trim(),
+                nkk: document.getElementById('inputNkk').value.trim(),
+                nik: document.getElementById('inputNik').value.trim(),
+                nama: document.getElementById('inputNama').value.trim().toUpperCase(),
+                tempatLahir: document.getElementById('inputTempatLahir').value.trim().toUpperCase(),
+                tglLahir: document.getElementById('inputTanggalLahir').value,
+                jenisKelamin: document.getElementById('inputJenisKelamin').value,
+                stsKawin: document.getElementById('inputStsKawin').value,
+                rt: document.getElementById('inputRt').value,
+                ktp: document.getElementById('inputKtp').value,
+                aksi: String(document.getElementById('inputAksi').value)
+            };
+
+            if (editId === -1) {
+                const newId = wargaData.length > 0 ? Math.max(...wargaData.map(w => w.id)) + 1 : 1;
+                wargaData.unshift({ id: newId, ...payload });
+                showToast('Data warga baru berhasil ditambahkan!', 'success');
+            } else {
+                const index = wargaData.findIndex(w => w.id === editId);
+                if (index !== -1) {
+                    wargaData[index] = { id: editId, ...payload };
+                    showToast('Data warga berhasil diperbarui!', 'success');
+                }
+            }
+
+            saveToLocalStorage();
+            closeModal();
+            filterData();
+        }
+
+        // Save data to LocalStorage for persistence
+        function saveToLocalStorage() {
+            localStorage.setItem('warga_data_cache', JSON.stringify(wargaData));
+        }
+
+        // Parse CSV Rows into Structured Citizens Array
+        function parseParsedCsvData(parsedRows) {
+            if (!parsedRows || parsedRows.length === 0) return [];
+            
+            return parsedRows.map((row, index) => {
+                // Flexible Header Key Mapping
+                const getVal = (keys) => {
+                    for (let k of keys) {
+                        for (let rowKey in row) {
+                            if (rowKey.toLowerCase().replace(/[^a-z0-9]/g, '') === k.toLowerCase().replace(/[^a-z0-9]/g, '')) {
+                                return String(row[rowKey]).trim();
+                            }
+                        }
+                    }
+                    return '';
+                };
+
+                return {
+                    id: index + 1,
+                    dpId: getVal(['DP-ID', 'DP_ID', 'DPID']) || `DP-${351500 + index + 1}`,
+                    nkk: getVal(['NKK', 'NO_KK', 'NOMOR_KK']),
+                    nik: getVal(['NIK', 'NO_NIK', 'NOMOR_NIK']),
+                    nama: getVal(['NAMA', 'NAMA_LENGKAP']).toUpperCase(),
+                    tempatLahir: getVal(['TEMPAT LAHIR', 'TEMPAT_LAHIR', 'TMP_LAHIR']).toUpperCase(),
+                    tglLahir: getVal(['TANGGAL LAHIR', 'TANGGAL_LAHIR', 'TGL_LAHIR']),
+                    stsKawin: getVal(['STS KAWIN', 'STS_KAWIN', 'STATUS_KAWIN']) || 'BELUM KAWIN',
+                    jenisKelamin: getVal(['JENIS KELAMIN', 'JENIS_KELAMIN', 'JK']) || 'L',
+                    rt: getVal(['RT']) || 'RT 01',
+                    ktp: getVal(['KTP', 'STATUS_KTP']) || 'Ada',
+                    aksi: getVal(['AKSI', 'STATUS', 'STATUS_AKSI']) || '0'
+                };
+            }).filter(item => item.nama !== '');
+        }
+
+        // Synchronize / Fetch Spreadsheet or CSV Data
+        function syncSpreadsheetData() {
+            const syncIcon = document.getElementById('iconSync');
+            const lastSyncInfo = document.getElementById('lastSyncInfo');
+            syncIcon.classList.add('spin-anim');
+            lastSyncInfo.textContent = 'Memuat data spreadsheet...';
+
+            let targetUrl = 'warga.csv'; // Default local repo file
+            if (configSourceMethod === 'gsheet' && configGoogleSheetUrl) {
+                targetUrl = configGoogleSheetUrl;
+            }
+
+            Papa.parse(targetUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    syncIcon.classList.remove('spin-anim');
+                    if (results.data && results.data.length > 0) {
+                        wargaData = parseParsedCsvData(results.data);
+                        saveToLocalStorage();
+                        renderTable(wargaData);
+                        const timeStr = new Date().toLocaleTimeString('id-ID');
+                        lastSyncInfo.textContent = `Terhubung & Disinkronkan: ${timeStr} (${wargaData.length} Data)`;
+                        showToast(`Berhasil memuat ${wargaData.length} data warga dari CSV!`, 'success');
+                    } else {
+                        loadFallbackOrCache('Data CSV kosong. Menggunakan cache/default.');
+                    }
+                },
+                error: function(err) {
+                    syncIcon.classList.remove('spin-anim');
+                    loadFallbackOrCache(`Gagal mengambil data dari ${targetUrl}. Memuat data cache.`);
+                }
+            });
+        }
+
+        function loadFallbackOrCache(msg) {
+            const cached = localStorage.getItem('warga_data_cache');
+            if (cached) {
+                try {
+                    wargaData = JSON.parse(cached);
+                    showToast(msg || 'Memuat data dari penyimpanan lokal.', 'info');
+                } catch(e) {
+                    wargaData = [...initialDefaultWarga];
+                }
+            } else {
+                wargaData = [...initialDefaultWarga];
+                showToast('Memuat data default contoh.', 'info');
+            }
+            renderTable(wargaData);
+            document.getElementById('lastSyncInfo').textContent = 'Menggunakan data offline / cache';
+        }
+
+        // Configuration Modal Controls
+        function openConfigModal() {
+            document.getElementById('configMethod').value = configSourceMethod;
+            document.getElementById('configSheetUrl').value = configGoogleSheetUrl;
+            toggleConfigInputs();
+            document.getElementById('modalConfig').classList.remove('hidden');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('modalConfig').classList.add('hidden');
+        }
+
+        function toggleConfigInputs() {
+            const method = document.getElementById('configMethod').value;
+            const group = document.getElementById('gsheetUrlGroup');
+            if (method === 'gsheet') {
+                group.classList.remove('hidden');
+            } else {
+                group.classList.add('hidden');
+            }
+        }
+
+        function saveConfig() {
+            configSourceMethod = document.getElementById('configMethod').value;
+            configGoogleSheetUrl = document.getElementById('configSheetUrl').value.trim();
+
+            localStorage.setItem('warga_config_method', configSourceMethod);
+            localStorage.setItem('warga_gsheet_url', configGoogleSheetUrl);
+
+            closeConfigModal();
+            syncSpreadsheetData();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.data && results.data.length > 0) {
+                        wargaData = parseParsedCsvData(results.data);
+                        saveToLocalStorage();
+                        renderTable(wargaData);
+                        closeConfigModal();
+                        showToast(`File CSV ${file.name} berhasil di-import!`, 'success');
+                    }
+                }
+            });
+        }
+
+        function clearLocalStorageData() {
+            localStorage.removeItem('warga_data_cache');
+            wargaData = [...initialDefaultWarga];
+            renderTable(wargaData);
+            closeConfigModal();
+            showToast('Cache lokal telah dibersihkan!', 'info');
+        }
+
+        // Export Data to CSV File
+        function exportCSV() {
+            const headers = ["NO", "DP-ID", "NKK", "NIK", "NAMA", "TEMPAT LAHIR", "TANGGAL LAHIR", "USIA", "STS KAWIN", "JENIS KELAMIN", "RT", "KTP", "AKSI"];
+            const rows = wargaData.map((item, index) => [
+                index + 1,
+                `"${item.dpId || ''}"`,
+                `"${item.nkk || ''}"`,
+                `"${item.nik || ''}"`,
+                `"${item.nama || ''}"`,
+                `"${item.tempatLahir || ''}"`,
+                `"${item.tglLahir || ''}"`,
+                calculateAge(item.tglLahir),
+                `"${item.stsKawin || ''}"`,
+                `"${item.jenisKelamin || ''}"`,
+                `"${item.rt || ''}"`,
+                `"${item.ktp || ''}"`,
+                `"${item.aksi || '0'}"`
+            ]);
+
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `warga_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('File CSV berhasil di-download!', 'success');
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMessage.textContent = message;
+
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400 text-lg';
+            } else if (type === 'danger') {
+                toastIcon.className = 'fa-solid fa-circle-xmark text-rose-400 text-lg';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-sky-400 text-lg';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3200);
+        }
+
+        // INITIAL LOAD
+        window.onload = function() {
+            syncSpreadsheetData();
+        };
+    </script>
+</body>
+</html>
