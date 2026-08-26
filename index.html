@@ -101,7 +101,7 @@
 
             <div class="bg-white p-3.5 sm:p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div>
-                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Warga Aktif (0)</p>
+                    <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500">Warga Aktif</p>
                     <h3 class="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-0.5 sm:mt-1" id="stat-aktif">0</h3>
                     <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1"><i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i> Status 0 & B</p>
                 </div>
@@ -203,7 +203,6 @@
             <!-- Quick RT Shortcut Buttons (Filter Cepat Per RT) -->
             <div class="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100" id="rtQuickPillsContainer">
                 <span class="text-[11px] font-semibold text-slate-500 mr-1"><i class="fa-solid fa-filter text-brand-500 mr-1"></i>Pilih RT:</span>
-                <!-- Dynamic RT Pills inserted by JS -->
             </div>
             
             <!-- Quick Legend / Status Explanation -->
@@ -475,6 +474,32 @@
             'U': { label: 'U = Ubah', bg: 'bg-blue-100 text-blue-800 border-blue-300', icon: 'fa-pen-to-square' }
         };
 
+        // Safe Storage Wrappers to prevent iframe security crashes
+        function getStorage(key, fallback = null) {
+            try {
+                return localStorage.getItem(key) || fallback;
+            } catch (e) {
+                console.warn('LocalStorage tidak dapat diakses:', e);
+                return fallback;
+            }
+        }
+
+        function setStorage(key, value) {
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) {
+                console.warn('LocalStorage error write:', e);
+            }
+        }
+
+        function removeStorage(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch (e) {
+                console.warn('LocalStorage error remove:', e);
+            }
+        }
+
         // Standardize RT Format (e.g., "1" -> "RT 01", "01" -> "RT 01", "RT.1" -> "RT 01")
         function normalizeRT(rtValue) {
             if (!rtValue) return 'RT 01';
@@ -491,10 +516,63 @@
             return str.startsWith('RT') ? str : `RT ${str}`;
         }
 
+        // Fallback Sample Citizen Data
+        const initialDefaultWarga = [
+            { id: 1, dpId: 'DP-351501', nkk: '3515010101200001', nik: '3515011205850001', nama: 'BUDI SANTOSO', tempatLahir: 'SURABAYA', tglLahir: '1985-05-12', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
+            { id: 2, dpId: 'DP-351502', nkk: '3515010101200001', nik: '3515015508890002', nama: 'SITI AMINAH', tempatLahir: 'SIDOARJO', tglLahir: '1989-08-15', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
+            { id: 3, dpId: 'DP-351503', nkk: '3515010202200002', nik: '3515012002780003', nama: 'BAMBANG HERMANTO', tempatLahir: 'MALANG', tglLahir: '1978-02-20', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 02', ktp: 'Ada', aksi: '3' },
+            { id: 4, dpId: 'DP-351504', nkk: '3515010303200003', nik: '3515010303920004', nama: 'RUDI HARTONO', tempatLahir: 'GRESIK', tglLahir: '1992-03-03', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 03', ktp: 'Ada', aksi: '5' },
+            { id: 5, dpId: 'DP-351505', nkk: '3515010404200004', nik: '3515014407500005', nama: 'MBOK SUMIATI', tempatLahir: 'SIDOARJO', tglLahir: '1950-07-04', stsKawin: 'CERAI MATI', jenisKelamin: 'P', rt: 'RT 02', ktp: 'Ada', aksi: '1' },
+            { id: 6, dpId: 'DP-351506', nkk: '3515010505200005', nik: '3515011111980006', nama: 'AHMAD PRATAMA', tempatLahir: 'SURABAYA', tglLahir: '1998-11-11', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 04', ktp: 'Proses', aksi: 'B' },
+            { id: 7, dpId: 'DP-351507', nkk: '3515010606200006', nik: '3515016212950007', nama: 'DEWI LESTARI', tempatLahir: 'KEDIRI', tglLahir: '1995-12-22', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 03', ktp: 'Ada', aksi: '6' },
+            { id: 8, dpId: 'DP-351508', nkk: '3515010707200007', nik: '3515011404880008', nama: 'EKO PRASETYO', tempatLahir: 'MOJOKERTO', tglLahir: '1988-04-14', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 05', ktp: 'Ada', aksi: '4' }
+        ];
+
+        let wargaData = [];
+        let chartStatusInstance = null;
+        let chartRtInstance = null;
+
+        // Configuration State
+        let configSourceMethod = getStorage('warga_config_method', 'github'); 
+        let configGoogleSheetUrl = getStorage('warga_gsheet_url', '');
+
+        // Calculate Age dynamically
+        function calculateAge(birthDateString) {
+            if (!birthDateString) return 0;
+            let cleanDate = birthDateString;
+            if (birthDateString.includes('/')) {
+                const parts = birthDateString.split('/');
+                if (parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            const birthDate = new Date(cleanDate);
+            if (isNaN(birthDate.getTime())) return 0;
+            
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            return age < 0 ? 0 : age;
+        }
+
+        // Format Date to ID standard (DD/MM/YYYY)
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            if (dateString.includes('/')) return dateString;
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return dateString;
+        }
+
         // Dynamically update RT Filter Dropdown and Quick Filter Pills based on actual dataset values
         function updateRtDropdownOptions() {
             const filterRtSelect = document.getElementById('filterRT');
             const rtPillsContainer = document.getElementById('rtQuickPillsContainer');
+            if (!filterRtSelect || !rtPillsContainer) return;
+
             const currentFilter = filterRtSelect.value;
             
             // Collect all unique RT values from data
@@ -551,71 +629,22 @@
             });
 
             // Update Total RT Stat
-            document.getElementById('stat-total-rt').textContent = sortedRTs.length;
+            const elRtStat = document.getElementById('stat-total-rt');
+            if (elRtStat) elRtStat.textContent = sortedRTs.length;
         }
 
-        // Fallback Sample Citizen Data with diverse RT entries
-        const initialDefaultWarga = [
-            { id: 1, dpId: 'DP-351501', nkk: '3515010101200001', nik: '3515011205850001', nama: 'BUDI SANTOSO', tempatLahir: 'SURABAYA', tglLahir: '1985-05-12', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
-            { id: 2, dpId: 'DP-351502', nkk: '3515010101200001', nik: '3515015508890002', nama: 'SITI AMINAH', tempatLahir: 'SIDOARJO', tglLahir: '1989-08-15', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 01', ktp: 'Ada', aksi: '0' },
-            { id: 3, dpId: 'DP-351503', nkk: '3515010202200002', nik: '3515012002780003', nama: 'BAMBANG HERMANTO', tempatLahir: 'MALANG', tglLahir: '1978-02-20', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 02', ktp: 'Ada', aksi: '3' },
-            { id: 4, dpId: 'DP-351504', nkk: '3515010303200003', nik: '3515010303920004', nama: 'RUDI HARTONO', tempatLahir: 'GRESIK', tglLahir: '1992-03-03', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 03', ktp: 'Ada', aksi: '5' },
-            { id: 5, dpId: 'DP-351505', nkk: '3515010404200004', nik: '3515014407500005', nama: 'MBOK SUMIATI', tempatLahir: 'SIDOARJO', tglLahir: '1950-07-04', stsKawin: 'CERAI MATI', jenisKelamin: 'P', rt: 'RT 02', ktp: 'Ada', aksi: '1' },
-            { id: 6, dpId: 'DP-351506', nkk: '3515010505200005', nik: '3515011111980006', nama: 'AHMAD PRATAMA', tempatLahir: 'SURABAYA', tglLahir: '1998-11-11', stsKawin: 'BELUM KAWIN', jenisKelamin: 'L', rt: 'RT 04', ktp: 'Proses', aksi: 'B' },
-            { id: 7, dpId: 'DP-351507', nkk: '3515010606200006', nik: '3515016212950007', nama: 'DEWI LESTARI', tempatLahir: 'KEDIRI', tglLahir: '1995-12-22', stsKawin: 'KAWIN', jenisKelamin: 'P', rt: 'RT 03', ktp: 'Ada', aksi: '6' },
-            { id: 8, dpId: 'DP-351508', nkk: '3515010707200007', nik: '3515011404880008', nama: 'EKO PRASETYO', tempatLahir: 'MOJOKERTO', tglLahir: '1988-04-14', stsKawin: 'KAWIN', jenisKelamin: 'L', rt: 'RT 05', ktp: 'Ada', aksi: '4' }
-        ];
-
-        let wargaData = [];
-        let chartStatusInstance = null;
-        let chartRtInstance = null;
-
-        // Configuration State
-        let configSourceMethod = localStorage.getItem('warga_config_method') || 'github'; // 'github' or 'gsheet'
-        let configGoogleSheetUrl = localStorage.getItem('warga_gsheet_url') || '';
-
-        // Calculate Age dynamically
-        function calculateAge(birthDateString) {
-            if (!birthDateString) return 0;
-            // Clean format DD/MM/YYYY to YYYY-MM-DD if needed
-            let cleanDate = birthDateString;
-            if (birthDateString.includes('/')) {
-                const parts = birthDateString.split('/');
-                if (parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            }
-            const birthDate = new Date(cleanDate);
-            if (isNaN(birthDate.getTime())) return 0;
-            
-            const today = new Date();
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const monthDiff = today.getMonth() - birthDate.getMonth();
-            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                age--;
-            }
-            return age < 0 ? 0 : age;
-        }
-
-        // Format Date to ID standard (DD/MM/YYYY)
-        function formatDate(dateString) {
-            if (!dateString) return '-';
-            if (dateString.includes('/')) return dateString;
-            const parts = dateString.split('-');
-            if (parts.length === 3) {
-                return `${parts[2]}/${parts[1]}/${parts[0]}`;
-            }
-            return dateString;
-        }
-
-        // Render Table & Statistics
+        // Render Table & Statistics safely
         function renderTable(dataToRender) {
             const tbody = document.getElementById('wargaTableBody');
             const emptyState = document.getElementById('emptyState');
+            if (!tbody) return;
+
             tbody.innerHTML = '';
 
             if (dataToRender.length === 0) {
-                emptyState.classList.remove('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             } else {
-                emptyState.classList.add('hidden');
+                if (emptyState) emptyState.classList.add('hidden');
             }
 
             dataToRender.forEach((item, index) => {
@@ -688,8 +717,10 @@
                 tbody.appendChild(tr);
             });
 
-            document.getElementById('displayedCount').textContent = dataToRender.length;
-            document.getElementById('totalCount').textContent = wargaData.length;
+            const elDisp = document.getElementById('displayedCount');
+            const elTot = document.getElementById('totalCount');
+            if (elDisp) elDisp.textContent = dataToRender.length;
+            if (elTot) elTot.textContent = wargaData.length;
 
             updateRtDropdownOptions();
             updateMetrics();
@@ -698,9 +729,9 @@
 
         // Filter Data Function
         function filterData() {
-            const searchValue = document.getElementById('searchInput').value.toLowerCase();
-            const filterRT = document.getElementById('filterRT').value;
-            const filterStatus = document.getElementById('filterStatus').value;
+            const searchValue = (document.getElementById('searchInput')?.value || '').toLowerCase();
+            const filterRT = document.getElementById('filterRT')?.value || '';
+            const filterStatus = document.getElementById('filterStatus')?.value || '';
 
             const filtered = wargaData.filter(item => {
                 const formattedRt = normalizeRT(item.rt);
@@ -721,89 +752,98 @@
         }
 
         function resetFilters() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('filterRT').value = '';
-            document.getElementById('filterStatus').value = '';
+            if (document.getElementById('searchInput')) document.getElementById('searchInput').value = '';
+            if (document.getElementById('filterRT')) document.getElementById('filterRT').value = '';
+            if (document.getElementById('filterStatus')) document.getElementById('filterStatus').value = '';
             renderTable(wargaData);
             showToast('Filter telah di-reset', 'info');
         }
 
-        // Update Statistics Count Cards
+        // Update Statistics Count Cards (SAFE ACCESS FIX)
         function updateMetrics() {
-            document.getElementById('stat-total').textContent = wargaData.length;
-            document.getElementById('stat-aktif').textContent = wargaData.filter(w => String(w.aksi) === '0' || String(w.aksi) === 'B').length;
-            document.getElementById('stat-pindah').textContent = wargaData.filter(w => String(w.aksi) === '5' || String(w.aksi) === '6').length;
-            document.getElementById('stat-meninggal').textContent = wargaData.filter(w => String(w.aksi) === '1').length;
+            const elTotal = document.getElementById('stat-total');
+            const elAktif = document.getElementById('stat-aktif');
+            const elPindah = document.getElementById('stat-pindah');
+
+            if (elTotal) elTotal.textContent = wargaData.length;
+            if (elAktif) elAktif.textContent = wargaData.filter(w => String(w.aksi) === '0' || String(w.aksi) === 'B').length;
+            if (elPindah) elPindah.textContent = wargaData.filter(w => String(w.aksi) === '5' || String(w.aksi) === '6').length;
         }
 
-        // Update Chart JS Charts
+        // Update Chart JS Charts Safely
         function updateCharts() {
-            const statusCounts = {
-                'Aktif (0, B)': wargaData.filter(w => ['0', 'B'].includes(String(w.aksi))).length,
-                'Meninggal (1)': wargaData.filter(w => String(w.aksi) === '1').length,
-                'Pindah (5,6)': wargaData.filter(w => ['5', '6'].includes(String(w.aksi))).length,
-                'Lainnya': wargaData.filter(w => !['0', '1', '5', '6', 'B'].includes(String(w.aksi))).length
-            };
+            const statusCanvas = document.getElementById('chartStatus');
+            const rtCanvas = document.getElementById('chartRT');
 
-            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
-            if (chartStatusInstance) chartStatusInstance.destroy();
-            chartStatusInstance = new Chart(ctxStatus, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(statusCounts),
-                    datasets: [{
-                        data: Object.values(statusCounts),
-                        backgroundColor: ['#10b981', '#64748b', '#f59e0b', '#6366f1'],
-                        borderWidth: 2,
-                        borderColor: '#ffffff'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } }
-                    }
-                }
-            });
+            if (statusCanvas && typeof Chart !== 'undefined') {
+                const statusCounts = {
+                    'Aktif (0, B)': wargaData.filter(w => ['0', 'B'].includes(String(w.aksi))).length,
+                    'Meninggal (1)': wargaData.filter(w => String(w.aksi) === '1').length,
+                    'Pindah (5,6)': wargaData.filter(w => ['5', '6'].includes(String(w.aksi))).length,
+                    'Lainnya': wargaData.filter(w => !['0', '1', '5', '6', 'B'].includes(String(w.aksi))).length
+                };
 
-            // Extract distinct RT list dynamically
-            const rtSet = new Set(wargaData.map(w => normalizeRT(w.rt)));
-            const rtList = Array.from(rtSet).sort((a, b) => {
-                const numA = parseInt(a.replace(/[^0-9]/g, '') || '0', 10);
-                const numB = parseInt(b.replace(/[^0-9]/g, '') || '0', 10);
-                return numA - numB;
-            });
-
-            if (rtList.length === 0) rtList.push('RT 01');
-
-            const rtCounts = rtList.map(rt => wargaData.filter(w => normalizeRT(w.rt) === rt).length);
-
-            const ctxRT = document.getElementById('chartRT').getContext('2d');
-            if (chartRtInstance) chartRtInstance.destroy();
-            chartRtInstance = new Chart(ctxRT, {
-                type: 'bar',
-                data: {
-                    labels: rtList,
-                    datasets: [{
-                        label: 'Jumlah Warga',
-                        data: rtCounts,
-                        backgroundColor: '#0284c7',
-                        borderRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } },
-                        x: { ticks: { font: { size: 10 } } }
+                const ctxStatus = statusCanvas.getContext('2d');
+                if (chartStatusInstance) chartStatusInstance.destroy();
+                chartStatusInstance = new Chart(ctxStatus, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(statusCounts),
+                        datasets: [{
+                            data: Object.values(statusCounts),
+                            backgroundColor: ['#10b981', '#64748b', '#f59e0b', '#6366f1'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
                     },
-                    plugins: {
-                        legend: { display: false }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } }
+                        }
                     }
-                }
-            });
+                });
+            }
+
+            if (rtCanvas && typeof Chart !== 'undefined') {
+                const rtSet = new Set(wargaData.map(w => normalizeRT(w.rt)));
+                const rtList = Array.from(rtSet).sort((a, b) => {
+                    const numA = parseInt(a.replace(/[^0-9]/g, '') || '0', 10);
+                    const numB = parseInt(b.replace(/[^0-9]/g, '') || '0', 10);
+                    return numA - numB;
+                });
+
+                if (rtList.length === 0) rtList.push('RT 01');
+
+                const rtCounts = rtList.map(rt => wargaData.filter(w => normalizeRT(w.rt) === rt).length);
+
+                const ctxRT = rtCanvas.getContext('2d');
+                if (chartRtInstance) chartRtInstance.destroy();
+                chartRtInstance = new Chart(ctxRT, {
+                    type: 'bar',
+                    data: {
+                        labels: rtList,
+                        datasets: [{
+                            label: 'Jumlah Warga',
+                            data: rtCounts,
+                            backgroundColor: '#0284c7',
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } },
+                            x: { ticks: { font: { size: 10 } } }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
         }
 
         // Modal Form RT Input Helper
@@ -912,9 +952,9 @@
             filterData();
         }
 
-        // Save data to LocalStorage for persistence
+        // Save data to LocalStorage safely
         function saveToLocalStorage() {
-            localStorage.setItem('warga_data_cache', JSON.stringify(wargaData));
+            setStorage('warga_data_cache', JSON.stringify(wargaData));
         }
 
         // Parse CSV Rows into Structured Citizens Array
@@ -922,7 +962,6 @@
             if (!parsedRows || parsedRows.length === 0) return [];
             
             return parsedRows.map((row, index) => {
-                // Flexible Header Key Mapping
                 const getVal = (keys) => {
                     for (let k of keys) {
                         for (let rowKey in row) {
@@ -953,16 +992,22 @@
             }).filter(item => item.nama !== '');
         }
 
-        // Synchronize / Fetch Spreadsheet or CSV Data
+        // Synchronize / Fetch Spreadsheet or CSV Data with Robust Fallback
         function syncSpreadsheetData() {
             const syncIcon = document.getElementById('iconSync');
             const lastSyncInfo = document.getElementById('lastSyncInfo');
-            syncIcon.classList.add('spin-anim');
-            lastSyncInfo.textContent = 'Memuat data spreadsheet...';
+            if (syncIcon) syncIcon.classList.add('spin-anim');
+            if (lastSyncInfo) lastSyncInfo.textContent = 'Memuat data spreadsheet...';
 
-            let targetUrl = 'warga.csv'; // Default local repo file
+            let targetUrl = 'warga.csv';
             if (configSourceMethod === 'gsheet' && configGoogleSheetUrl) {
                 targetUrl = configGoogleSheetUrl;
+            }
+
+            if (typeof Papa === 'undefined') {
+                if (syncIcon) syncIcon.classList.remove('spin-anim');
+                loadFallbackOrCache('Library CSV belum siap. Memuat data cadangan.');
+                return;
             }
 
             Papa.parse(targetUrl, {
@@ -970,27 +1015,27 @@
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    syncIcon.classList.remove('spin-anim');
+                    if (syncIcon) syncIcon.classList.remove('spin-anim');
                     if (results.data && results.data.length > 0) {
                         wargaData = parseParsedCsvData(results.data);
                         saveToLocalStorage();
                         renderTable(wargaData);
                         const timeStr = new Date().toLocaleTimeString('id-ID');
-                        lastSyncInfo.textContent = `Terhubung & Disinkronkan: ${timeStr} (${wargaData.length} Data)`;
+                        if (lastSyncInfo) lastSyncInfo.textContent = `Terhubung & Disinkronkan: ${timeStr} (${wargaData.length} Data)`;
                         showToast(`Berhasil memuat ${wargaData.length} data warga dari CSV!`, 'success');
                     } else {
-                        loadFallbackOrCache('Data CSV kosong. Menggunakan cache/default.');
+                        loadFallbackOrCache('Data CSV kosong. Menggunakan data cadangan.');
                     }
                 },
                 error: function(err) {
-                    syncIcon.classList.remove('spin-anim');
-                    loadFallbackOrCache(`Gagal mengambil data dari ${targetUrl}. Memuat data cache.`);
+                    if (syncIcon) syncIcon.classList.remove('spin-anim');
+                    loadFallbackOrCache('Data CSV lokal belum ada. Memuat data sampel.');
                 }
             });
         }
 
         function loadFallbackOrCache(msg) {
-            const cached = localStorage.getItem('warga_data_cache');
+            const cached = getStorage('warga_data_cache', null);
             if (cached) {
                 try {
                     wargaData = JSON.parse(cached);
@@ -1000,10 +1045,11 @@
                 }
             } else {
                 wargaData = [...initialDefaultWarga];
-                showToast('Memuat data default contoh.', 'info');
+                showToast('Memuat data default sampel.', 'info');
             }
             renderTable(wargaData);
-            document.getElementById('lastSyncInfo').textContent = 'Menggunakan data offline / cache';
+            const lastSyncInfo = document.getElementById('lastSyncInfo');
+            if (lastSyncInfo) lastSyncInfo.textContent = 'Menggunakan data lokal / sampel';
         }
 
         // Configuration Modal Controls
@@ -1032,8 +1078,8 @@
             configSourceMethod = document.getElementById('configMethod').value;
             configGoogleSheetUrl = document.getElementById('configSheetUrl').value.trim();
 
-            localStorage.setItem('warga_config_method', configSourceMethod);
-            localStorage.setItem('warga_gsheet_url', configGoogleSheetUrl);
+            setStorage('warga_config_method', configSourceMethod);
+            setStorage('warga_gsheet_url', configGoogleSheetUrl);
 
             closeConfigModal();
             syncSpreadsheetData();
@@ -1059,7 +1105,7 @@
         }
 
         function clearLocalStorageData() {
-            localStorage.removeItem('warga_data_cache');
+            removeStorage('warga_data_cache');
             wargaData = [...initialDefaultWarga];
             renderTable(wargaData);
             closeConfigModal();
@@ -1105,6 +1151,8 @@
             const toastMessage = document.getElementById('toastMessage');
             const toastIcon = document.getElementById('toastIcon');
 
+            if (!toast || !toastMessage || !toastIcon) return;
+
             toastMessage.textContent = message;
 
             if (type === 'success') {
@@ -1122,9 +1170,14 @@
             }, 3200);
         }
 
-        // INITIAL LOAD
+        // INITIAL LOAD WITH ROBUST WRAPPER
         window.onload = function() {
-            syncSpreadsheetData();
+            try {
+                syncSpreadsheetData();
+            } catch (err) {
+                console.error('Initial load failed:', err);
+                loadFallbackOrCache('Terjadi kesalahan saat memuat. Menggunakan data sampel.');
+            }
         };
     </script>
 </body>
